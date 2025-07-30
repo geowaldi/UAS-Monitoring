@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Defensive Cyber Ops Dashboard</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap');
+        body { 
+            font-family: 'Roboto Mono', monospace; 
+            color: #e6edf3; 
+            margin: 0; 
+            background-color: #010409;
+            background-image: url('https://www.transparenttextures.com/patterns/cubes.png');
+            overflow-x: hidden; /* Mencegah scroll horizontal */
+        }
+        #particles-js { position: fixed; width: 100%; height: 100%; z-index: -1; }
+        .main-container {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            width: 100%;
+            min-height: 100vh;
+            padding: 50px 20px;
+            box-sizing: border-box;
+        }
+        .container { 
+            z-index: 1; 
+            background-color: rgba(1, 4, 9, 0.85); 
+            backdrop-filter: blur(10px); 
+            border: 1px solid #30363d; 
+            padding: 30px; 
+            border-radius: 10px; 
+            width: 100%; 
+            max-width: 1100px;
+        }
+        h1 { color: #58a6ff; text-align: center; border-bottom: 1px solid #30363d; padding-bottom: 15px; }
+        .tabs { display: flex; border-bottom: 1px solid #30363d; margin-bottom: 20px; }
+        .tab-button { background: none; border: none; color: #8b949e; padding: 15px 20px; cursor: pointer; font-size: 16px; font-family: inherit; }
+        .tab-button.active { color: #58a6ff; border-bottom: 2px solid #58a6ff; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .input-group { display: flex; margin-bottom: 20px; gap: 10px; }
+        #target-input { flex-grow: 1; padding: 12px; font-size: 16px; border: 1px solid #30363d; background-color: #0d1117; color: #c9d1d9; border-radius: 6px; }
+        button { padding: 12px 20px; font-size: 16px; font-weight: bold; background-color: #238636; color: white; border: none; cursor: pointer; border-radius: 6px; transition: all 0.3s; }
+        button:hover { background-color: #2ea043; transform: translateY(-2px); }
+        #status { text-align: center; font-style: italic; color: #8b949e; height: 20px; margin-bottom: 20px; }
+        #results-container, #cluster-status-container { margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+        .card { background-color: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 20px; }
+        .card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; }
+        .card-header svg { stroke: #8b949e; }
+        .card h4 { margin: 0; color: #c9d1d9; }
+        .card p, .card li { font-family: sans-serif; font-size: 14px; color: #8b949e; }
+        .card .highlight { font-size: 16px; font-weight: bold; color: #e6edf3; }
+        .pod-table { width: 100%; border-collapse: collapse; }
+        .pod-table th, .pod-table td { text-align: left; padding: 8px; border-bottom: 1px solid #30363d; font-family: sans-serif; font-size: 14px; }
+        .up, .open, .running { color: #3fb950; }
+        .down, .closed, .failed { color: #f85149; }
+        .pending { color: #f08832; }
+    </style>
+</head>
+<body>
+    <div id="particles-js"></div>
+    <div class="main-container"> <div class="container">
+            <h1>Defensive Cyber Ops Dashboard</h1>
+            
+            <div class="tabs">
+                <button class="tab-button active" onclick="openTab('external', event)">External Monitoring</button>
+                <button class="tab-button" onclick="openTab('internal', event)">Internal Cluster Status</button>
+            </div>
+            
+            <div id="external" class="tab-content active">
+                <div class="input-group">
+                    <input type="text" id="target-input" value="detik.com" placeholder="Masukkan Target (e.g., detik.com)">
+                </div>
+                <div class="input-group">
+                     <button id="btn-all">Run Full Analysis</button>
+                </div>
+                <div id="status">Ready</div>
+                <h3>Hasil Analisis Eksternal:</h3>
+                <div id="results-container"></div>
+            </div>
+            
+            <div id="internal" class="tab-content">
+                <div class="input-group">
+                    <button id="btn-refresh-cluster">Refresh Status</button>
+                </div>
+                <h3>Status Pod di Cluster Kubernetes:</h3>
+                <div id="cluster-status-container"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
+    <script>
+        // Inisialisasi Latar Belakang Animasi
+        particlesJS("particles-js", { "particles": {"number": {"value": 80, "density": {"enable": true, "value_area": 800}}, "color": {"value": "#58a6ff"}, "shape": {"type": "circle"}, "opacity": {"value": 0.5, "random": false}, "size": {"value": 3, "random": true}, "line_linked": {"enable": true, "distance": 150, "color": "#58a6ff", "opacity": 0.4, "width": 1}, "move": {"enable": true, "speed": 2, "direction": "none", "random": false, "straight": false, "out_mode": "out"}}, "interactivity": {"detect_on": "canvas", "events": {"onhover": {"enable": true, "mode": "repulse"}, "onclick": {"enable": true, "mode": "push"}, "resize": true}}, "retina_detect": true });
+
+        // --- Variabel Global ---
+        const targetInput = document.getElementById('target-input');
+        const runButton = document.getElementById('btn-all');
+        const statusDiv = document.getElementById('status');
+        const resultsContainer = document.getElementById('results-container');
+        const refreshClusterBtn = document.getElementById('btn-refresh-cluster');
+        const clusterStatusContainer = document.getElementById('cluster-status-container');
+        const API_URL = '';
+
+        // --- Logika Ikon ---
+        const ICONS = {
+            uptime: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>`,
+            ports: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`,
+            headers: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`,
+            ssl: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 5-5 5 5 0 0 1 5 5v4"></path><path d="M12 16a1 1 0 0 1 0-2 1 1 0 0 1 0 2z"></path></svg>`
+        };
+
+        // --- Logika Tab ---
+        function openTab(tabName, event) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(tabName).classList.add('active');
+            event.currentTarget.classList.add('active');
+            if (tabName === 'internal') {
+                getClusterStatus();
+            }
+        }
+
+        // --- Fungsi Helper ---
+        function setLoading(isLoading, message = '') {
+            runButton.disabled = isLoading;
+            statusDiv.textContent = message;
+            if (isLoading) resultsContainer.innerHTML = '<div>Menganalisis...</div>';
+        }
+
+        function createCard(title, icon, content) {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.innerHTML = `<div class="card-header">${icon}<h4>${title}</h4></div>` + content;
+            resultsContainer.appendChild(card);
+        }
+
+        // --- Fungsi Render Kartu ---
+        function renderUptimeCard(data) {
+            let content = '';
+            if (data.status === 'UP') {
+                content = `<p>Status: <span class="up highlight">UP</span></p><p>Status Code: ${data.status_code}</p>`;
+            } else {
+                content = `<p>Status: <span class="down highlight">DOWN</span></p><p>Error: ${data.error}</p>`;
+            }
+            createCard('Uptime Status', ICONS.uptime, content);
+        }
+
+        function renderPortsCard(data) {
+            let content = `<p class="highlight">${data.ip}</p><ul>`;
+            if (data.ports) {
+                data.ports.forEach(p => {
+                    content += `<li>${p.port} (${p.service}): <span class="${p.status.toLowerCase()}">${p.status}</span></li>`;
+                });
+            } else {
+                content += `<li>${data.error}</li>`;
+            }
+            content += '</ul>';
+            createCard('Common Ports', ICONS.ports, content);
+        }
+
+        function renderHeadersCard(data) {
+            let content = `<p class="highlight">${data.ip || 'N/A'}</p><ul>`;
+            if (data.headers && Object.keys(data.headers).length > 0) {
+                for (const [key, value] of Object.entries(data.headers)) {
+                    content += `<li><strong>✓ ${key}</strong></li>`;
+                }
+            } else {
+                content += `<li>Tidak ada header keamanan umum yang ditemukan.</li>`;
+            }
+            content += '</ul>';
+            createCard('Security Headers', ICONS.headers, content);
+        }
+        
+        function renderSSLCard(data) {
+            let content = '';
+            if (data.error) {
+                content = `<p class="down highlight">Error</p><p>${data.error}</p>`;
+            } else {
+                const expiryClass = data.days_remaining < 30 ? 'down' : (data.days_remaining < 90 ? 'warning' : 'up');
+                content = `<p>Issuer: <span class="highlight">${data.issuer}</span></p><p>Expires: <span class="${expiryClass} highlight">${data.expires_in}</span></p>`;
+            }
+            createCard('SSL Certificate', ICONS.ssl, content);
+        }
+
+        // --- Logika Monitoring Eksternal ---
+        async function runFullAnalysis() {
+            const target = targetInput.value;
+            setLoading(true, `Menjalankan analisis lengkap untuk ${target}...`);
+            const uptimePromise = fetch(`${API_URL}/check`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ url: target }) }).then(res => res.json());
+            const portsPromise = fetch(`${API_URL}/check_ports`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ host: target }) }).then(res => res.json());
+            const headersPromise = fetch(`${API_URL}/check_headers`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ url: target }) }).then(res => res.json());
+            const sslPromise = fetch(`${API_URL}/check_ssl`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ host: target }) }).then(res => res.json());
+
+            try {
+                const [uptimeData, portsData, headersData, sslData] = await Promise.all([uptimePromise, portsPromise, headersPromise, sslPromise]);
+                resultsContainer.innerHTML = ''; 
+                renderUptimeCard(uptimeData);
+                renderPortsCard(portsData);
+                renderHeadersCard(headersData);
+                renderSSLCard(sslData);
+                statusDiv.textContent = 'Analisis Selesai!';
+            } catch (error) {
+                statusDiv.textContent = 'Terjadi error saat analisis.';
+            }
+            setLoading(false);
+        }
+        
+        // --- Logika Monitoring Internal ---
+        async function getClusterStatus() {
+            clusterStatusContainer.innerHTML = '<div>Memuat status cluster...</div>';
+            try {
+                const response = await fetch(`${API_URL}/cluster_status`);
+                const pods = await response.json();
+                let tableHTML = `<table class="pod-table"><tr><th>NAMA POD</th><th>STATUS</th><th>IP</th><th>UMUR</th></tr>`;
+                pods.forEach(pod => {
+                    tableHTML += `<tr><td>${pod.name}</td><td><span class="${pod.status.toLowerCase()}">${pod.status}</span></td><td>${pod.ip}</td><td>${pod.age}</td></tr>`;
+                });
+                tableHTML += '</table>';
+                clusterStatusContainer.innerHTML = tableHTML;
+            } catch (error) {
+                clusterStatusContainer.innerHTML = '<div>Gagal memuat status cluster.</div>';
+            }
+        }
+
+        // --- Event Listeners ---
+        runButton.addEventListener('click', runFullAnalysis);
+        refreshClusterBtn.addEventListener('click', getClusterStatus);
+    </script>
+</body>
+</html>
